@@ -1,0 +1,37 @@
+name: Yocto Build RPI CM5
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: # Erlaubt manuelles Starten
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gawk wget git diffstat unzip texinfo gcc build-essential \
+          chrpath socat cpio python3 python3-pip python3-pexpect xz-utils debianutils \
+          iputils-ping python3-git python3-jinja2 libegl1-mesa libsdl1.2-dev \
+          pylint xterm python3-subunit mesa-common-dev zstd liblz4-tool
+
+      - name: Run Setup and Build
+        run: |
+          # Wir nutzen ein abgewandeltes Setup für die Pipeline
+          chmod +x setup_build.sh
+          # In der CI nutzen wir bash ohne interaktive Shell
+          /bin/bash -c "source setup_build.sh"
+
+      - name: Archive Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpi-cm5-image
+          path: build/tmp/deploy/images/raspberrypi5/*.wic.bz2
+          retention-days: 5
