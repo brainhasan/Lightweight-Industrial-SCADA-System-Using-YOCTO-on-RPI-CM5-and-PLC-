@@ -1,37 +1,45 @@
 #!/bin/bash
 
-# 1. Source the environment
-# We use '.' instead of 'source' for maximum compatibility
+# 1. Umgebung initialisieren
+# 'source' ist notwendig, um die BitBake-Umgebung in die aktuelle Shell zu laden
 source poky/oe-init-build-env build
 
-# 2. Add layers (only if they aren't already there)
-echo "Configuring layers..."
+# 2. Layer hinzufügen (nur falls noch nicht vorhanden)
+echo "Konfiguriere Layer..."
 bitbake-layers add-layer ../meta-raspberrypi
 bitbake-layers add-layer ../meta-openembedded/meta-oe
 bitbake-layers add-layer ../meta-openembedded/meta-python
 bitbake-layers add-layer ../meta-openembedded/meta-networking
 bitbake-layers add-layer ../meta-openembedded/meta-multimedia
 
-# 3. Append CM5 configuration and Checksum Fix to local.conf
+# 3. CM5 Konfiguration und GitHub-Optimierungen in local.conf schreiben
 if ! grep -q "raspberrypi5" conf/local.conf; then
-echo "Appending CM5 configurations to local.conf..."
+echo "Schreibe CM5 & GitHub Konfigurationen in local.conf..."
 cat <<EOT >> conf/local.conf
 
-# CM5/RPI5 Configuration
+# --- CM5 / RPI5 Basis-Setup ---
 MACHINE = "raspberrypi5"
 ENABLE_UART = "1"
 VC4GRAPHICS = "1"
 IMAGE_FSTYPES = "wic.bz2 wic.bmap"
 LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
 
-# Workaround for rpi-bootfiles checksum issue
+# --- GitHub Runner Optimierung (Verhindert OOM Crashes) ---
+# Da GitHub Runner ca. 7GB RAM haben, begrenzen wir die Threads
+BB_NUMBER_THREADS = "2"
+PARALLEL_MAKE = "-j 2"
+
+# --- Fehlerbehebung & Caching ---
+# Verhindert Abbruch bei Prüfsummen-Änderungen der Firmware
 BB_STRICT_CHECKSUM = "0"
+# Stellt sicher, dass der SSTATE-Ordner für die GitHub Cache Action am richtigen Ort ist
+SSTATE_DIR = "\${TOPDIR}/sstate-cache"
 EOT
 fi
 
-echo "--- Setup Complete ---"
-echo "Starting the build for core-image-base..."
+echo "--- Setup abgeschlossen ---"
+echo "Starte Build für core-image-base..."
 
-# 4. Clear the error state for the bootfiles and start the build
+# 4. Bootfiles bereinigen und Build starten
 bitbake -c cleansstate rpi-bootfiles
 bitbake core-image-base
