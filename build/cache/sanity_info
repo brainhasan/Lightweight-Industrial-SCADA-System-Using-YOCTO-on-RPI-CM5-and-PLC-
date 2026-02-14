@@ -1,4 +1,0 @@
-SANITY_VERSION 1
-TMPDIR /home/hasan/workspace/SCADA-YOCTO-RPI/build/tmp
-SSTATE_DIR /home/hasan/workspace/SCADA-YOCTO-RPI/build/sstate-cache
-NATIVELSBSTRING ubuntu-22.04
