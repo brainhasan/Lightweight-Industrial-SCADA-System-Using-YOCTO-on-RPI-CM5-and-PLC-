@@ -1,9 +1,8 @@
 name: Yocto Build RPI CM5
-
 on:
   push:
     branches: [ "main" ]
-  workflow_dispatch: # Erlaubt manuelles Starten
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,6 +13,17 @@ jobs:
         with:
           submodules: 'recursive'
 
+      # IMPORTANT: This frees up ~30GB of space by removing pre-installed tools
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+
       - name: Install System Dependencies
         run: |
           sudo apt-get update
@@ -22,16 +32,24 @@ jobs:
           iputils-ping python3-git python3-jinja2 libegl1-mesa libsdl1.2-dev \
           pylint xterm python3-subunit mesa-common-dev zstd liblz4-tool
 
+      # Cache the SSTATE directory to speed up future runs and bypass timeouts
+      - name: Setup Cache
+        uses: actions/cache@v4
+        with:
+          path: build/sstate-cache
+          key: yocto-sstate-${{ github.sha }}
+          restore-keys: |
+            yocto-sstate-
+
       - name: Run Setup and Build
         run: |
-          # Wir nutzen ein abgewandeltes Setup für die Pipeline
           chmod +x setup_build.sh
-          # In der CI nutzen wir bash ohne interaktive Shell
+          # Use a subshell to ensure the environment is sourced correctly
           /bin/bash -c "source setup_build.sh"
 
       - name: Archive Artifacts
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: rpi-cm5-image
           path: build/tmp/deploy/images/raspberrypi5/*.wic.bz2
-          retention-days: 5
