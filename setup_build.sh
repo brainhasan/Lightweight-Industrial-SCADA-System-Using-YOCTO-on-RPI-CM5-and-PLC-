@@ -25,12 +25,13 @@ IMAGE_FSTYPES = "wic.bz2 wic.bmap"
 LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
 
 # --- Zusätzliche Software-Pakete ---
+# --- Zusätzliche Software-Pakete ---
 IMAGE_INSTALL:append = " \\
     python3-core \\
     python3-modules \\
     python3-paho-mqtt \\
     python3-requests \\
-    python3-dotenv \\
+    python3-python-dotenv \\
     mosquitto \\
     mosquitto-clients \\
     ca-certificates \\
