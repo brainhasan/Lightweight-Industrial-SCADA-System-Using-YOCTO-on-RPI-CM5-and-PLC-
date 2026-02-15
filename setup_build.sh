@@ -12,9 +12,9 @@ bitbake-layers add-layer ../meta-openembedded/meta-python
 bitbake-layers add-layer ../meta-openembedded/meta-networking
 bitbake-layers add-layer ../meta-openembedded/meta-multimedia
 
-# 3. CM5 Konfiguration und GitHub-Optimierungen in local.conf schreiben
+# 3. CM5 Konfiguration, Pakete und GitHub-Optimierungen in local.conf schreiben
 if ! grep -q "raspberrypi5" conf/local.conf; then
-echo "Schreibe CM5 & GitHub Konfigurationen in local.conf..."
+echo "Schreibe CM5, Pakete & GitHub Konfigurationen in local.conf..."
 cat <<EOT >> conf/local.conf
 
 # --- CM5 / RPI5 Basis-Setup ---
@@ -23,6 +23,18 @@ ENABLE_UART = "1"
 VC4GRAPHICS = "1"
 IMAGE_FSTYPES = "wic.bz2 wic.bmap"
 LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
+
+# --- Zusätzliche Software-Pakete ---
+IMAGE_INSTALL:append = " \\
+    python3-core \\
+    python3-modules \\
+    python3-paho-mqtt \\
+    python3-requests \\
+    python3-dotenv \\
+    mosquitto \\
+    mosquitto-clients \\
+    ca-certificates \\
+"
 
 # --- GitHub Runner Optimierung (Verhindert OOM Crashes) ---
 # Da GitHub Runner ca. 7GB RAM haben, begrenzen wir die Threads
