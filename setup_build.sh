@@ -30,7 +30,6 @@ IMAGE_INSTALL:append = " \\
     python3-modules \\
     python3-paho-mqtt \\
     python3-requests \\
-    python3-pydotenv \\
     mosquitto \\
     mosquitto-clients \\
     ca-certificates \\
