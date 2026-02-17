@@ -11,10 +11,14 @@ bitbake-layers add-layer ../meta-openembedded/meta-python
 bitbake-layers add-layer ../meta-openembedded/meta-networking
 bitbake-layers add-layer ../meta-openembedded/meta-multimedia
 
-# 3. Konfiguration schreiben
-if ! grep -q "raspberrypi5" conf/local.conf; then
+# 3. local.conf zurücksetzen und neu schreiben
+LOCAL_CONF="conf/local.conf"
+echo "Lösche alte $LOCAL_CONF und erstelle sie neu..."
+rm -f $LOCAL_CONF
+
 echo "Schreibe CM5 & Pakete in local.conf..."
-cat <<EOT >> conf/local.conf
+cat <<EOT >> $LOCAL_CONF
+# --- Automatisch generiertes Setup ---
 
 # --- CM5 / RPI5 Basis-Setup ---
 MACHINE = "raspberrypi5"
@@ -24,7 +28,7 @@ IMAGE_FSTYPES = "wic.bz2 wic.bmap"
 LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
 
 # --- Software-Pakete ---
-# Hinweis: Falls python3-pydotenv wieder fehlschlägt, ersetze es durch python3-dotenv
+# python3-dotenv/pydotenv vorerst entfernt wegen Layer-Inkompatibilität
 IMAGE_INSTALL:append = " \\
     python3-core \\
     python3-modules \\
@@ -35,14 +39,21 @@ IMAGE_INSTALL:append = " \\
     ca-certificates \\
 "
 
-# --- GitHub Runner Optimierung ---
+# --- GitHub Runner Optimierung (Vermeidung von OOM) ---
 BB_NUMBER_THREADS = "2"
 PARALLEL_MAKE = "-j 2"
 BB_STRICT_CHECKSUM = "0"
 SSTATE_DIR = "\${TOPDIR}/sstate-cache"
-EOT
-fi
 
-echo "--- Setup abgeschlossen ---"
+# Standard Poky Einstellungen beibehalten
+DISTRO ?= "poky"
+PACKAGE_CLASSES ?= "package_rpm"
+USER_CLASSES ?= "buildstats"
+PATCHRESOLVE = "noop"
+EOT
+
+echo "--- Setup abgeschlossen (local.conf ist sauber) ---"
+
+# 4. Build starten
 bitbake -c cleansstate rpi-bootfiles
 bitbake core-image-base
