@@ -1,11 +1,22 @@
 import os
 import json
 import time
-from dotenv import load_dotenv
+#from dotenv import load_dotenv
 import paho.mqtt.client as mqtt
 
-# 1. Laden der Zugangsdaten
-load_dotenv()
+
+def load_env_manual(filepath=".env"):
+    if os.path.exists(filepath):
+        with open(filepath) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                key, value = line.split("=", 1)
+                os.environ[key] = value.strip().strip('"').strip("'")
+
+# load_dotenv()
+load_env_manual()
 
 HIVEMQ_BROKER = os.getenv('MQTT_BROKER')
 HIVEMQ_USER = os.getenv('MQTT_USER')
