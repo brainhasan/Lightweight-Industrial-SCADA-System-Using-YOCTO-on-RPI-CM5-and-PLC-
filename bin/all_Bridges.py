@@ -4,19 +4,40 @@ import time
 #from dotenv import load_dotenv
 import paho.mqtt.client as mqtt
 
+def load_env_manual(filepath="/usr/bin/.env"):
+    if not os.path.exists(filepath):
+        print(f"[WARN] .env Datei nicht gefunden unter: {filepath}")
+        return
 
-def load_env_manual(filepath=".env"):
-    if os.path.exists(filepath):
-        with open(filepath) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
+    with open(filepath, "r") as f:
+        for line in f:
+            # Entferne führende/folgende Leerzeichen
+            line = line.strip()
+            
+            # Ignoriere leere Zeilen und Kommentare
+            if not line or line.startswith("#"):
+                continue
+            
+            # Trenne nur am ersten Gleichheitszeichen
+            if "=" in line:
                 key, value = line.split("=", 1)
-                os.environ[key] = value.strip().strip('"').strip("'")
+                
+                # Bereinige Key und Value
+                key = key.strip()
+                value = value.strip()
+                
+                # Entferne Anführungszeichen (beidseitig), falls vorhanden
+                if (value.startswith('"') and value.endswith('"')) or \
+                   (value.startswith("'") and value.endswith("'")):
+                    value = value[1:-1]
+                
+                # In Umgebungsvariablen schreiben
+                os.environ[key] = value
+                # print(f"[DEBUG] Loaded: {key}=***") # Zum Testen einkommentieren
 
-# load_dotenv()
+# Jetzt laden
 load_env_manual()
+
 
 HIVEMQ_BROKER = os.getenv('MQTT_BROKER')
 HIVEMQ_USER = os.getenv('MQTT_USER')
