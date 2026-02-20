@@ -1,0 +1,17 @@
+# Yocto Build-Verzeichnis (enthält tmp, sstate, etc.)
+build/
+
+# Lokale Downloads von Source-Code
+downloads/
+
+# Shared State Cache (wird über GitHub Actions Cache verwaltet)
+sstate-cache/
+
+# Falls du Dateien direkt in den Layer-Ordnern änderst (optional)
+*.pyc
+*.swp
+*~
+
+# IDE-spezifische Dateien
+.vscode/
+.idea/
