@@ -22,12 +22,11 @@ BBFILE_PRIORITY_custom = "6"
 LAYERSERIES_COMPAT_custom = "scarthgap kirkstone mickledore"
 EOT
 
-# 5. Das Master-Rezept (Inklusive Firmware Download)
+# 5. Das Master-Rezept mit AKTUALISIERTEN Checksummen
 cat <<EOT > meta-custom/recipes-core/custom-scripts/custom-scripts.bb
 SUMMARY = "Custom RootFS Overlay & WiFi Firmware für CM5"
 LICENSE = "CLOSED"
 
-# Wir fügen die Firmware-URLs direkt als Source hinzu
 SRC_URI = " \\
     file://rootfs_overlay \\
     https://raw.githubusercontent.com/RPi-Distro/firmware-nonfree/master/brcm/brcmfmac43455-sdio.bin;name=wifi_bin \\
@@ -36,8 +35,8 @@ SRC_URI = " \\
     https://raw.githubusercontent.com/RPi-Distro/bluez-firmware/master/broadcom/BCM4345C0.hcd;name=bt_hcd \\
 "
 
-# Checksummen (notwendig für externe Downloads in Yocto)
-SRC_URI[wifi_bin.sha256sum] = "76707835f992323c94060241065961d56350f96d91781216a30113c24cf1b988"
+# Aktualisierte Checksummen (Stand Heute)
+SRC_URI[wifi_bin.sha256sum] = "cf79e8e8727d103a94cd243f1d98770fa29f5da25df251d0d31b3696f3b4ac6a"
 SRC_URI[wifi_blob.sha256sum] = "741d7e822002167d643884f3df9116e053f3e6e87a2d1e28935c1507f439c894"
 SRC_URI[wifi_txt.sha256sum] = "4f28588f0e53a29821815805eb2c923366c8105f992383507d7301c3422204c4"
 SRC_URI[bt_hcd.sha256sum] = "40203a3b50c9509b533a1e58284698539207a9b09a738a0889139f4034870c52"
@@ -45,20 +44,19 @@ SRC_URI[bt_hcd.sha256sum] = "40203a3b50c9509b533a1e58284698539207a9b09a738a08891
 S = "\${WORKDIR}"
 
 do_install() {
-    # 1. Verzeichnisse erstellen
     install -d \${D}\${bindir}
     install -d \${D}\${sysconfdir}/network
     install -d \${D}\${sysconfdir}/mosquitto
     install -d \${D}\${sysconfdir}/init.d
     install -d \${D}/lib/firmware/brcm
 
-    # 2. Firmware installieren (Umbenennung für CM5 Support)
+    # Firmware Installation
     install -m 0644 \${WORKDIR}/brcmfmac43455-sdio.bin \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.bin
     install -m 0644 \${WORKDIR}/brcmfmac43455-sdio.clm_blob \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.clm_blob
     install -m 0644 \${WORKDIR}/brcmfmac43455-sdio.txt \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.txt
     install -m 0644 \${WORKDIR}/BCM4345C0.hcd \${D}/lib/firmware/brcm/BCM4345C0.raspberrypi,5-compute-module.hcd
 
-    # 3. rootfs_overlay Inhalte kopieren
+    # rootfs_overlay
     if [ -d \${WORKDIR}/rootfs_overlay/bin ]; then
         cp -rp \${WORKDIR}/rootfs_overlay/bin/. \${D}\${bindir}/
         chmod 0755 \${D}\${bindir}/*.py 2>/dev/null || true
@@ -92,7 +90,7 @@ bitbake-layers add-layer ../meta-openembedded/meta-networking
 bitbake-layers add-layer ../meta-openembedded/meta-multimedia
 bitbake-layers add-layer ../meta-custom
 
-# 8. local.conf (Firmware-Paket entfernt, da jetzt manuell im Rezept)
+# 8. local.conf
 LOCAL_CONF="conf/local.conf"
 rm -f $LOCAL_CONF
 
@@ -103,10 +101,7 @@ VC4GRAPHICS = "1"
 IMAGE_FSTYPES = "wic.bz2 wic.bmap"
 LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
 
-# Basispakete für WiFi Tools
 IMAGE_INSTALL:append = " wpa-supplicant iw"
-
-# Deine Software + Unser Custom-Rezept (inkl. Firmware)
 IMAGE_INSTALL:append = " \\
     python3-core \\
     python3-modules \\
