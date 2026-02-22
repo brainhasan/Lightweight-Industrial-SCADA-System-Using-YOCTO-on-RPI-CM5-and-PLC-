@@ -21,14 +21,14 @@ BBFILE_PRIORITY_custom = "6"
 LAYERSERIES_COMPAT_custom = "scarthgap kirkstone mickledore"
 EOT
 
-# 5. Das Rezept - Deine Buildroot Logik übertragen auf Yocto
+# 5. Das Rezept - Mit ultimativem Packaging-Fix
 cat <<EOT > meta-custom/recipes-core/custom-scripts/custom-scripts.bb
-SUMMARY = "Custom RootFS Overlay & WiFi/BT Firmware via wget"
+SUMMARY = "Custom RootFS Overlay & WiFi/BT Firmware"
 LICENSE = "CLOSED"
 
 SRC_URI = "file://rootfs_overlay"
 
-# Netzwerkzugriff für wget innerhalb von do_install erlauben
+# Netzwerk für wget erlauben
 do_install[network] = "1"
 
 S = "\${WORKDIR}"
@@ -42,9 +42,7 @@ do_install() {
     install -d \${D}/lib/firmware/brcm
     install -d \${D}\${sysconfdir}/ssl/certs
 
-    # ========================================================================
-    # TEIL 2: Firmware Download (WiFi/BT für CM5)
-    # ========================================================================
+    # Firmware Downloads (Deine Buildroot Logik)
     RPI_WIFI_URL="https://raw.githubusercontent.com/RPi-Distro/firmware-nonfree/master/brcm"
     RPI_BT_URL="https://raw.githubusercontent.com/RPi-Distro/bluez-firmware/master/broadcom"
     REG_DB_URL="https://git.kernel.org/pub/scm/linux/kernel/git/sforshee/wireless-regdb.git/plain"
@@ -56,16 +54,12 @@ do_install() {
     wget -O "\${D}/lib/firmware/regulatory.db" "\${REG_DB_URL}/regulatory.db"
     wget -O "\${D}/lib/firmware/regulatory.db.p7s" "\${REG_DB_URL}/regulatory.db.p7s"
 
-    # ========================================================================
-    # TEIL 3: TLS/SSL Zertifikate
-    # ========================================================================
+    # TLS Zertifikate
     HIVEMQ_CA_URL="https://letsencrypt.org/certs/isrgrootx1.pem.txt"
     wget -O "\${D}\${sysconfdir}/ssl/certs/isrgrootx1.pem" "\$HIVEMQ_CA_URL"
     ln -sf isrgrootx1.pem "\${D}\${sysconfdir}/ssl/certs/ca-certificates.crt"
 
-    # ========================================================================
     # rootfs_overlay
-    # ========================================================================
     if [ -d \${S}/rootfs_overlay/bin ]; then
         cp -rp \${S}/rootfs_overlay/bin/. \${D}\${bindir}/
         chmod 0755 \${D}\${bindir}/*.py 2>/dev/null || true
@@ -73,22 +67,24 @@ do_install() {
 
     [ -f \${S}/rootfs_overlay/etc/network/interfaces ] && install -m 0644 \${S}/rootfs_overlay/etc/network/interfaces \${D}\${sysconfdir}/network/
     [ -f \${S}/rootfs_overlay/etc/wpa_supplicant.conf ] && install -m 0600 \${S}/etc/wpa_supplicant.conf \${D}\${sysconfdir}/
-    [ -f \${S}/rootfs_overlay/etc/mosquitto/mosquitto.conf ] && install -m 0644 \${S}/etc/mosquitto/mosquitto.conf \${D}\${sysconfdir}/mosquitto/
+    [ -f \${S}/etc/mosquitto/mosquitto.conf ] && install -m 0644 \${S}/etc/mosquitto/mosquitto.conf \${D}\${sysconfdir}/mosquitto/
     
     if [ -f \${S}/rootfs_overlay/etc/init.d/S99wifi ]; then
         install -m 0755 \${S}/rootfs_overlay/etc/init.d/S99wifi \${D}\${sysconfdir}/init.d/
     fi
 }
 
-# Absolut sichere Zuweisung aller Pfade zum Paket
+# RADIKALER FIX: Alles unter /usr und /etc dem Paket zuweisen
 FILES:\${PN} = " \\
     \${bindir}/* \\
     \${sysconfdir}/* \\
     /lib/firmware/* \\
 "
+# Verhindert, dass leere Unterordner den QA-Fehler werfen
+INSANE_SKIP:\${PN} = "installed-vs-shipped"
 EOT
 
-# 6. Lokale Dateien kopieren (Pfad-Check)
+# 6. Lokale Dateien kopieren
 OVERLAY_SRC="../external/board/cm5io/rootfs_overlay"
 if [ -d "$OVERLAY_SRC" ]; then
     cp -r $OVERLAY_SRC/* meta-custom/recipes-core/custom-scripts/files/rootfs_overlay/
@@ -104,7 +100,7 @@ bitbake-layers add-layer ../meta-openembedded/meta-networking
 bitbake-layers add-layer ../meta-openembedded/meta-multimedia
 bitbake-layers add-layer ../meta-custom
 
-# 8. local.conf
+# 8. local.conf - MIT GITHUB RUNNER OPTIMIERUNG
 LOCAL_CONF="conf/local.conf"
 rm -f $LOCAL_CONF
 
@@ -117,9 +113,9 @@ LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
 
 IMAGE_INSTALL:append = " wpa-supplicant iw wget ca-certificates python3-core python3-modules python3-paho-mqtt python3-requests mosquitto mosquitto-clients custom-scripts"
 
-# GitHub Actions Optimierung
-BB_NUMBER_THREADS = "4"
-PARALLEL_MAKE = "-j 4"
+# RUNNER OPTIMIERUNG: Weniger Threads verhindern Kernel-Crash (Out of Memory)
+BB_NUMBER_THREADS = "2"
+PARALLEL_MAKE = "-j 2"
 BB_NO_NETWORK = "0"
 EOT
 
