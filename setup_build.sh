@@ -5,7 +5,6 @@ source poky/oe-init-build-env build
 
 # 2. Sauberes Setup
 cd ..
-echo "Bereinige alten meta-custom Layer..."
 rm -rf meta-custom
 
 # 3. Layer Struktur erstellen
@@ -22,24 +21,21 @@ BBFILE_PRIORITY_custom = "6"
 LAYERSERIES_COMPAT_custom = "scarthgap kirkstone mickledore"
 EOT
 
-# 5. Das Master-Rezept mit AKTUALISIERTEN Checksummen
+# 5. Das Rezept - Nutzt GIT statt Einzel-Downloads (Keine Checksummen nötig!)
 cat <<EOT > meta-custom/recipes-core/custom-scripts/custom-scripts.bb
-SUMMARY = "Custom RootFS Overlay & WiFi Firmware für CM5"
+SUMMARY = "Custom RootFS Overlay & WiFi Firmware via Git"
 LICENSE = "CLOSED"
 
+# Wir holen das gesamte Firmware-Repo vom Master/Main. 
+# 'destsuffix' legt es in einen Unterordner, damit es sauber bleibt.
 SRC_URI = " \\
     file://rootfs_overlay \\
-    https://raw.githubusercontent.com/RPi-Distro/firmware-nonfree/master/brcm/brcmfmac43455-sdio.bin;name=wifi_bin \\
-    https://raw.githubusercontent.com/RPi-Distro/firmware-nonfree/master/brcm/brcmfmac43455-sdio.clm_blob;name=wifi_blob \\
-    https://raw.githubusercontent.com/RPi-Distro/firmware-nonfree/master/brcm/brcmfmac43455-sdio.txt;name=wifi_txt \\
-    https://raw.githubusercontent.com/RPi-Distro/bluez-firmware/master/broadcom/BCM4345C0.hcd;name=bt_hcd \\
+    git://github.com/RPi-Distro/firmware-nonfree.git;protocol=https;branch=master;destsuffix=firmware-repo \\
+    git://github.com/RPi-Distro/bluez-firmware.git;protocol=https;branch=master;destsuffix=bluez-repo \\
 "
 
-# Aktualisierte Checksummen (Stand Heute)
-SRC_URI[wifi_bin.sha256sum] = "cf79e8e8727d103a94cd243f1d98770fa29f5da25df251d0d31b3696f3b4ac6a"
-SRC_URI[wifi_blob.sha256sum] = "741d7e822002167d643884f3df9116e053f3e6e87a2d1e28935c1507f439c894"
-SRC_URI[wifi_txt.sha256sum] = "4f28588f0e53a29821815805eb2c923366c8105f992383507d7301c3422204c4"
-SRC_URI[bt_hcd.sha256sum] = "40203a3b50c9509b533a1e58284698539207a9b09a738a0889139f4034870c52"
+# SRCREV definiert die Version. \${AUTOREV} holt IMMER das Neueste vom Main/Master.
+SRCREV = "\${AUTOREV}"
 
 S = "\${WORKDIR}"
 
@@ -50,13 +46,14 @@ do_install() {
     install -d \${D}\${sysconfdir}/init.d
     install -d \${D}/lib/firmware/brcm
 
-    # Firmware Installation
-    install -m 0644 \${WORKDIR}/brcmfmac43455-sdio.bin \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.bin
-    install -m 0644 \${WORKDIR}/brcmfmac43455-sdio.clm_blob \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.clm_blob
-    install -m 0644 \${WORKDIR}/brcmfmac43455-sdio.txt \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.txt
-    install -m 0644 \${WORKDIR}/BCM4345C0.hcd \${D}/lib/firmware/brcm/BCM4345C0.raspberrypi,5-compute-module.hcd
+    # 1. Firmware kopieren (Aus den Git-Ordnern)
+    # Entspricht deinem wget-Ansatz, aber Yocto-konform via Git-Clone
+    cp \${WORKDIR}/firmware-repo/brcm/brcmfmac43455-sdio.bin \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.bin
+    cp \${WORKDIR}/firmware-repo/brcm/brcmfmac43455-sdio.clm_blob \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.clm_blob
+    cp \${WORKDIR}/firmware-repo/brcm/brcmfmac43455-sdio.txt \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.txt
+    cp \${WORKDIR}/bluez-repo/broadcom/BCM4345C0.hcd \${D}/lib/firmware/brcm/BCM4345C0.raspberrypi,5-compute-module.hcd
 
-    # rootfs_overlay
+    # 2. rootfs_overlay
     if [ -d \${WORKDIR}/rootfs_overlay/bin ]; then
         cp -rp \${WORKDIR}/rootfs_overlay/bin/. \${D}\${bindir}/
         chmod 0755 \${D}\${bindir}/*.py 2>/dev/null || true
@@ -74,7 +71,7 @@ do_install() {
 FILES:\${PN} += "/lib/firmware/brcm/* \${bindir}/* \${sysconfdir}/*"
 EOT
 
-# 6. Dateien kopieren
+# 6. Lokale Dateien kopieren
 OVERLAY_SRC="../external/board/cm5io/rootfs_overlay"
 if [ -d "$OVERLAY_SRC" ]; then
     cp -r $OVERLAY_SRC/* meta-custom/recipes-core/custom-scripts/files/rootfs_overlay/
@@ -113,10 +110,10 @@ IMAGE_INSTALL:append = " \\
     custom-scripts \\
 "
 
+# Erlaubt Netzwerkzugriff während des Builds für den Git-Clone
+BB_NO_NETWORK = "0"
 BB_NUMBER_THREADS = "2"
 PARALLEL_MAKE = "-j 2"
-BB_STRICT_CHECKSUM = "0"
-SSTATE_DIR = "\${TOPDIR}/sstate-cache"
 EOT
 
 bitbake core-image-base
