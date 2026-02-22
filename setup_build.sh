@@ -34,7 +34,7 @@ do_install[network] = "1"
 S = "\${WORKDIR}"
 
 do_install() {
-    # Verzeichnisse erstellen (entspricht TARGET_DIR Pfaden)
+    # Verzeichnisse erstellen
     install -d \${D}\${bindir}
     install -d \${D}\${sysconfdir}/network
     install -d \${D}\${sysconfdir}/mosquitto
@@ -43,52 +43,52 @@ do_install() {
     install -d \${D}\${sysconfdir}/ssl/certs
 
     # ========================================================================
-    # TEIL 2: Firmware Download (WiFi/BT für CM5) - DEINE LOGIK
+    # TEIL 2: Firmware Download (WiFi/BT für CM5)
     # ========================================================================
     RPI_WIFI_URL="https://raw.githubusercontent.com/RPi-Distro/firmware-nonfree/master/brcm"
     RPI_BT_URL="https://raw.githubusercontent.com/RPi-Distro/bluez-firmware/master/broadcom"
     REG_DB_URL="https://git.kernel.org/pub/scm/linux/kernel/git/sforshee/wireless-regdb.git/plain"
 
-    # WiFi
     wget -O "\${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.bin" "\${RPI_WIFI_URL}/brcmfmac43455-sdio.bin"
     wget -O "\${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.clm_blob" "\${RPI_WIFI_URL}/brcmfmac43455-sdio.clm_blob"
     wget -O "\${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.txt" "\${RPI_WIFI_URL}/brcmfmac43455-sdio.txt"
-
-    # Bluetooth
     wget -O "\${D}/lib/firmware/brcm/BCM4345C0.raspberrypi,5-compute-module.hcd" "\${RPI_BT_URL}/BCM4345C0.hcd"
-
-    # Regulatory DB
     wget -O "\${D}/lib/firmware/regulatory.db" "\${REG_DB_URL}/regulatory.db"
     wget -O "\${D}/lib/firmware/regulatory.db.p7s" "\${REG_DB_URL}/regulatory.db.p7s"
 
     # ========================================================================
-    # TEIL 3: TLS/SSL Zertifikate für HiveMQ Cloud - DEINE LOGIK
+    # TEIL 3: TLS/SSL Zertifikate
     # ========================================================================
     HIVEMQ_CA_URL="https://letsencrypt.org/certs/isrgrootx1.pem.txt"
     wget -O "\${D}\${sysconfdir}/ssl/certs/isrgrootx1.pem" "\$HIVEMQ_CA_URL"
     ln -sf isrgrootx1.pem "\${D}\${sysconfdir}/ssl/certs/ca-certificates.crt"
 
     # ========================================================================
-    # rootfs_overlay (Skripte, Netzwerk, Mosquitto)
+    # rootfs_overlay
     # ========================================================================
-    if [ -d \${WORKDIR}/rootfs_overlay/bin ]; then
-        cp -rp \${WORKDIR}/rootfs_overlay/bin/. \${D}\${bindir}/
+    if [ -d \${S}/rootfs_overlay/bin ]; then
+        cp -rp \${S}/rootfs_overlay/bin/. \${D}\${bindir}/
         chmod 0755 \${D}\${bindir}/*.py 2>/dev/null || true
     fi
 
-    [ -f \${WORKDIR}/rootfs_overlay/etc/network/interfaces ] && install -m 0644 \${WORKDIR}/rootfs_overlay/etc/network/interfaces \${D}\${sysconfdir}/network/
-    [ -f \${WORKDIR}/rootfs_overlay/etc/wpa_supplicant.conf ] && install -m 0600 \${WORKDIR}/rootfs_overlay/etc/wpa_supplicant.conf \${D}\${sysconfdir}/
-    [ -f \${WORKDIR}/rootfs_overlay/etc/mosquitto/mosquitto.conf ] && install -m 0644 \${WORKDIR}/rootfs_overlay/etc/mosquitto/mosquitto.conf \${D}\${sysconfdir}/mosquitto/
+    [ -f \${S}/rootfs_overlay/etc/network/interfaces ] && install -m 0644 \${S}/rootfs_overlay/etc/network/interfaces \${D}\${sysconfdir}/network/
+    [ -f \${S}/rootfs_overlay/etc/wpa_supplicant.conf ] && install -m 0600 \${S}/etc/wpa_supplicant.conf \${D}\${sysconfdir}/
+    [ -f \${S}/rootfs_overlay/etc/mosquitto/mosquitto.conf ] && install -m 0644 \${S}/etc/mosquitto/mosquitto.conf \${D}\${sysconfdir}/mosquitto/
     
-    if [ -f \${WORKDIR}/rootfs_overlay/etc/init.d/S99wifi ]; then
-        install -m 0755 \${WORKDIR}/rootfs_overlay/etc/init.d/S99wifi \${D}\${sysconfdir}/init.d/
+    if [ -f \${S}/rootfs_overlay/etc/init.d/S99wifi ]; then
+        install -m 0755 \${S}/rootfs_overlay/etc/init.d/S99wifi \${D}\${sysconfdir}/init.d/
     fi
 }
 
-FILES:\${PN} += "/lib/firmware/brcm/* /lib/firmware/regulatory.* \${bindir}/* \${sysconfdir}/*"
+# Absolut sichere Zuweisung aller Pfade zum Paket
+FILES:\${PN} = " \\
+    \${bindir}/* \\
+    \${sysconfdir}/* \\
+    /lib/firmware/* \\
+"
 EOT
 
-# 6. Lokale Dateien kopieren
+# 6. Lokale Dateien kopieren (Pfad-Check)
 OVERLAY_SRC="../external/board/cm5io/rootfs_overlay"
 if [ -d "$OVERLAY_SRC" ]; then
     cp -r $OVERLAY_SRC/* meta-custom/recipes-core/custom-scripts/files/rootfs_overlay/
@@ -115,19 +115,11 @@ VC4GRAPHICS = "1"
 IMAGE_FSTYPES = "wic.bz2 wic.bmap"
 LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
 
-# Basispakete
-IMAGE_INSTALL:append = " wpa-supplicant iw wget ca-certificates"
-IMAGE_INSTALL:append = " \\
-    python3-core \\
-    python3-modules \\
-    python3-paho-mqtt \\
-    python3-requests \\
-    mosquitto \\
-    mosquitto-clients \\
-    custom-scripts \\
-"
+IMAGE_INSTALL:append = " wpa-supplicant iw wget ca-certificates python3-core python3-modules python3-paho-mqtt python3-requests mosquitto mosquitto-clients custom-scripts"
 
-# Netzwerk für den Build erlauben
+# GitHub Actions Optimierung
+BB_NUMBER_THREADS = "4"
+PARALLEL_MAKE = "-j 4"
 BB_NO_NETWORK = "0"
 EOT
 
