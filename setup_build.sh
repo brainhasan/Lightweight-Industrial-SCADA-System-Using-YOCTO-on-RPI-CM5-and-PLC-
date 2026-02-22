@@ -21,39 +21,56 @@ BBFILE_PRIORITY_custom = "6"
 LAYERSERIES_COMPAT_custom = "scarthgap kirkstone mickledore"
 EOT
 
-# 5. Das Rezept - Nutzt GIT statt Einzel-Downloads (Keine Checksummen nötig!)
+# 5. Das Rezept - Deine Buildroot Logik übertragen auf Yocto
 cat <<EOT > meta-custom/recipes-core/custom-scripts/custom-scripts.bb
-SUMMARY = "Custom RootFS Overlay & WiFi Firmware via Git"
+SUMMARY = "Custom RootFS Overlay & WiFi/BT Firmware via wget"
 LICENSE = "CLOSED"
 
-# Wir holen das gesamte Firmware-Repo vom Master/Main. 
-# 'destsuffix' legt es in einen Unterordner, damit es sauber bleibt.
-SRC_URI = " \\
-    file://rootfs_overlay \\
-    git://github.com/RPi-Distro/firmware-nonfree.git;protocol=https;branch=master;destsuffix=firmware-repo \\
-    git://github.com/RPi-Distro/bluez-firmware.git;protocol=https;branch=master;destsuffix=bluez-repo \\
-"
+SRC_URI = "file://rootfs_overlay"
 
-# SRCREV definiert die Version. \${AUTOREV} holt IMMER das Neueste vom Main/Master.
-SRCREV = "\${AUTOREV}"
+# Netzwerkzugriff für wget innerhalb von do_install erlauben
+do_install[network] = "1"
 
 S = "\${WORKDIR}"
 
 do_install() {
+    # Verzeichnisse erstellen (entspricht TARGET_DIR Pfaden)
     install -d \${D}\${bindir}
     install -d \${D}\${sysconfdir}/network
     install -d \${D}\${sysconfdir}/mosquitto
     install -d \${D}\${sysconfdir}/init.d
     install -d \${D}/lib/firmware/brcm
+    install -d \${D}\${sysconfdir}/ssl/certs
 
-    # 1. Firmware kopieren (Aus den Git-Ordnern)
-    # Entspricht deinem wget-Ansatz, aber Yocto-konform via Git-Clone
-    cp \${WORKDIR}/firmware-repo/brcm/brcmfmac43455-sdio.bin \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.bin
-    cp \${WORKDIR}/firmware-repo/brcm/brcmfmac43455-sdio.clm_blob \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.clm_blob
-    cp \${WORKDIR}/firmware-repo/brcm/brcmfmac43455-sdio.txt \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.txt
-    cp \${WORKDIR}/bluez-repo/broadcom/BCM4345C0.hcd \${D}/lib/firmware/brcm/BCM4345C0.raspberrypi,5-compute-module.hcd
+    # ========================================================================
+    # TEIL 2: Firmware Download (WiFi/BT für CM5) - DEINE LOGIK
+    # ========================================================================
+    RPI_WIFI_URL="https://raw.githubusercontent.com/RPi-Distro/firmware-nonfree/master/brcm"
+    RPI_BT_URL="https://raw.githubusercontent.com/RPi-Distro/bluez-firmware/master/broadcom"
+    REG_DB_URL="https://git.kernel.org/pub/scm/linux/kernel/git/sforshee/wireless-regdb.git/plain"
 
-    # 2. rootfs_overlay
+    # WiFi
+    wget -O "\${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.bin" "\${RPI_WIFI_URL}/brcmfmac43455-sdio.bin"
+    wget -O "\${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.clm_blob" "\${RPI_WIFI_URL}/brcmfmac43455-sdio.clm_blob"
+    wget -O "\${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.txt" "\${RPI_WIFI_URL}/brcmfmac43455-sdio.txt"
+
+    # Bluetooth
+    wget -O "\${D}/lib/firmware/brcm/BCM4345C0.raspberrypi,5-compute-module.hcd" "\${RPI_BT_URL}/BCM4345C0.hcd"
+
+    # Regulatory DB
+    wget -O "\${D}/lib/firmware/regulatory.db" "\${REG_DB_URL}/regulatory.db"
+    wget -O "\${D}/lib/firmware/regulatory.db.p7s" "\${REG_DB_URL}/regulatory.db.p7s"
+
+    # ========================================================================
+    # TEIL 3: TLS/SSL Zertifikate für HiveMQ Cloud - DEINE LOGIK
+    # ========================================================================
+    HIVEMQ_CA_URL="https://letsencrypt.org/certs/isrgrootx1.pem.txt"
+    wget -O "\${D}\${sysconfdir}/ssl/certs/isrgrootx1.pem" "\$HIVEMQ_CA_URL"
+    ln -sf isrgrootx1.pem "\${D}\${sysconfdir}/ssl/certs/ca-certificates.crt"
+
+    # ========================================================================
+    # rootfs_overlay (Skripte, Netzwerk, Mosquitto)
+    # ========================================================================
     if [ -d \${WORKDIR}/rootfs_overlay/bin ]; then
         cp -rp \${WORKDIR}/rootfs_overlay/bin/. \${D}\${bindir}/
         chmod 0755 \${D}\${bindir}/*.py 2>/dev/null || true
@@ -68,7 +85,7 @@ do_install() {
     fi
 }
 
-FILES:\${PN} += "/lib/firmware/brcm/* \${bindir}/* \${sysconfdir}/*"
+FILES:\${PN} += "/lib/firmware/brcm/* /lib/firmware/regulatory.* \${bindir}/* \${sysconfdir}/*"
 EOT
 
 # 6. Lokale Dateien kopieren
@@ -98,7 +115,8 @@ VC4GRAPHICS = "1"
 IMAGE_FSTYPES = "wic.bz2 wic.bmap"
 LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
 
-IMAGE_INSTALL:append = " wpa-supplicant iw"
+# Basispakete
+IMAGE_INSTALL:append = " wpa-supplicant iw wget ca-certificates"
 IMAGE_INSTALL:append = " \\
     python3-core \\
     python3-modules \\
@@ -106,14 +124,11 @@ IMAGE_INSTALL:append = " \\
     python3-requests \\
     mosquitto \\
     mosquitto-clients \\
-    ca-certificates \\
     custom-scripts \\
 "
 
-# Erlaubt Netzwerkzugriff während des Builds für den Git-Clone
+# Netzwerk für den Build erlauben
 BB_NO_NETWORK = "0"
-BB_NUMBER_THREADS = "2"
-PARALLEL_MAKE = "-j 2"
 EOT
 
 bitbake core-image-base
