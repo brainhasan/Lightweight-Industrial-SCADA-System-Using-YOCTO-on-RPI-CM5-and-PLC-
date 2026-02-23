@@ -1,0 +1,18 @@
+# Loopback interface
+auto lo
+iface lo inet loopback
+
+# Ethernet (DHCP)
+auto eth0
+iface eth0 inet static
+    address 192.168.0.50
+    netmask 255.255.255.0
+    # gateway 192.168.0.1
+    
+# WLAN Konfiguration
+#auto wlan0
+#iface wlan0 inet dhcp
+ #   pre-up wpa_supplicant -B -Dnl80211 -iwlan0 -c/etc/wpa_supplicant.conf
+  #  post-down killall -q wpa_supplicant
+    # Optional: Warten bis Verbindung steht
+    # pre-up sleep 5

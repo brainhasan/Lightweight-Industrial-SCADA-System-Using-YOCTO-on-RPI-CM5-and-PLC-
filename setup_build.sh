@@ -1,72 +1,87 @@
 #!/bin/bash
 
-# 1. Umgebung initialisieren
+# 1. Projekt-Root Verzeichnis festlegen
+PROJECT_ROOT=$(pwd)
+
+# 2. Yocto Umgebung initialisieren
+# Falls der Build-Ordner noch nicht existiert, wird er erstellt
 source poky/oe-init-build-env build
 
-# 2. RADIKALE REINIGUNG (Um "Out of Resource" zu vermeiden)
-# Wir gehen in den Build-Ordner und löschen die Altlasten
-echo "Lösche alte Build-Daten (tmp und sstate)..."
-rm -rf tmp
-# Optional: sstate-cache löschen, wenn der Fehler hartnäckig bleibt
-# rm -rf sstate-cache 
+# 3. Zurück zum Root, um die Layer-Struktur sauber aufzubauen
+cd "$PROJECT_ROOT"
 
-# 3. Layer Setup (Zurück zum Root)
-cd ..
+# 4. Verzeichnisse vorbereiten
+RECIPE_DIR="meta-custom/recipes-core/custom-scripts"
+DL_DIR="$RECIPE_DIR/files/downloads"
+OVERLAY_DIR="$RECIPE_DIR/files/rootfs_overlay"
+
+# Alten Layer löschen für einen sauberen Stand
 rm -rf meta-custom
 mkdir -p meta-custom/conf
-mkdir -p meta-custom/recipes-core/custom-scripts/files/rootfs_overlay
+mkdir -p "$DL_DIR"
+mkdir -p "$OVERLAY_DIR"
 
-# 4. Layer-Konfiguration
+# 5. Layer-Konfiguration (layer.conf)
 cat <<EOT > meta-custom/conf/layer.conf
 BBPATH .= ":\${LAYERDIR}"
 BBFILES += "\${LAYERDIR}/recipes-core/*/*.bb \${LAYERDIR}/recipes-core/*/*.bbappend"
 BBFILE_COLLECTIONS += "custom"
 BBFILE_PATTERN_custom = "^\${LAYERDIR}/"
 BBFILE_PRIORITY_custom = "6"
-LAYERSERIES_COMPAT_custom = "scarthgap kirkstone mickledore"
+LAYERSERIES_COMPAT_custom = "scarthgap"
 EOT
 
-# 5. Das Rezept mit sauberem Packaging
-cat <<EOT > meta-custom/recipes-core/custom-scripts/custom-scripts.bb
+# 6. Das Rezept (custom-scripts.bb)
+# WICHTIG: RREPLACES/RCONFLICTS löst den File-Clash Fehler
+cat <<EOT > "$RECIPE_DIR/custom-scripts.bb"
 SUMMARY = "Custom RootFS Overlay & WiFi/BT Firmware"
+DESCRIPTION = "Replaces official firmware to avoid file clashes and adds custom scripts"
 LICENSE = "CLOSED"
 
-SRC_URI = "file://rootfs_overlay"
-do_install[network] = "1"
+SRC_URI = " \\
+    file://rootfs_overlay \\
+    file://downloads/brcmfmac43455-sdio.bin \\
+    file://downloads/brcmfmac43455-sdio.clm_blob \\
+    file://downloads/brcmfmac43455-sdio.txt \\
+    file://downloads/BCM4345C0.hcd \\
+    file://downloads/isrgrootx1.pem \\
+"
 
 S = "\${WORKDIR}"
 
+# Diese Zeilen verhindern den Fehler "But that file is already provided by package..."
+RREPLACES:\${PN} = "linux-firmware-rpidistro-bcm43455"
+RCONFLICTS:\${PN} = "linux-firmware-rpidistro-bcm43455"
+RPROVIDES:\${PN} = "linux-firmware-rpidistro-bcm43455"
+
 do_install() {
+    # Zielverzeichnisse erstellen
     install -d \${D}\${bindir}
     install -d \${D}\${sysconfdir}/network
     install -d \${D}\${sysconfdir}/mosquitto
     install -d \${D}\${sysconfdir}/init.d
-    install -d \${D}/lib/firmware/brcm
     install -d \${D}\${sysconfdir}/ssl/certs
+    install -d \${D}/lib/firmware/brcm
 
-    # Firmware & SSL Downloads
-    RPI_WIFI_URL="https://raw.githubusercontent.com/RPi-Distro/firmware-nonfree/master/brcm"
-    RPI_BT_URL="https://raw.githubusercontent.com/RPi-Distro/bluez-firmware/master/broadcom"
-    REG_DB_URL="https://git.kernel.org/pub/scm/linux/kernel/git/sforshee/wireless-regdb.git/plain"
-    HIVEMQ_CA_URL="https://letsencrypt.org/certs/isrgrootx1.pem.txt"
+    # Firmware installieren (mit den spezifischen RPi5 CM Namen)
+    install -m 0644 \${WORKDIR}/downloads/brcmfmac43455-sdio.bin \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.bin
+    install -m 0644 \${WORKDIR}/downloads/brcmfmac43455-sdio.clm_blob \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.clm_blob
+    install -m 0644 \${WORKDIR}/downloads/brcmfmac43455-sdio.txt \${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.txt
+    install -m 0644 \${WORKDIR}/downloads/BCM4345C0.hcd \${D}/lib/firmware/brcm/BCM4345C0.raspberrypi,5-compute-module.hcd
+    
+    # SSL Zertifikat & Link
+    install -m 0644 \${WORKDIR}/downloads/isrgrootx1.pem \${D}\${sysconfdir}/ssl/certs/isrgrootx1.pem
+    ln -sf isrgrootx1.pem \${D}\${sysconfdir}/ssl/certs/ca-certificates.crt
 
-    wget -q -O "\${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.bin" "\${RPI_WIFI_URL}/brcmfmac43455-sdio.bin"
-    wget -q -O "\${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.clm_blob" "\${RPI_WIFI_URL}/brcmfmac43455-sdio.clm_blob"
-    wget -q -O "\${D}/lib/firmware/brcm/brcmfmac43455-sdio.raspberrypi,5-compute-module.txt" "\${RPI_WIFI_URL}/brcmfmac43455-sdio.txt"
-    wget -q -O "\${D}/lib/firmware/brcm/BCM4345C0.raspberrypi,5-compute-module.hcd" "\${RPI_BT_URL}/BCM4345C0.hcd"
-    wget -q -O "\${D}/lib/firmware/regulatory.db" "\${REG_DB_URL}/regulatory.db"
-    wget -q -O "\${D}/lib/firmware/regulatory.db.p7s" "\${REG_DB_URL}/regulatory.db.p7s"
-    wget -q -O "\${D}\${sysconfdir}/ssl/certs/isrgrootx1.pem" "\$HIVEMQ_CA_URL"
-    ln -sf isrgrootx1.pem "\${D}\${sysconfdir}/ssl/certs/ca-certificates.crt"
-
-    # Overlay
+    # Overlay Installation aus dem bin-Ordner
     if [ -d \${S}/rootfs_overlay/bin ]; then
-        cp -rp \${S}/rootfs_overlay/bin/. \${D}\${bindir}/
-        chmod 0755 \${D}\${bindir}/*.py 2>/dev/null || true
+        install -m 0755 \${S}/rootfs_overlay/bin/*.py \${D}\${bindir}/
     fi
+
+    # Overlay Installation aus dem etc-Ordner (entsprechend deiner Baumstruktur)
     [ -f \${S}/rootfs_overlay/etc/network/interfaces ] && install -m 0644 \${S}/rootfs_overlay/etc/network/interfaces \${D}\${sysconfdir}/network/
-    [ -f \${S}/rootfs_overlay/etc/wpa_supplicant.conf ] && install -m 0600 \${S}/rootfs_overlay/etc/wpa_supplicant.conf \${D}\${sysconfdir}/
-    [ -f \${S}/etc/mosquitto/mosquitto.conf ] && install -m 0644 \${S}/etc/mosquitto/mosquitto.conf \${D}\${sysconfdir}/mosquitto/
+    [ -f \${S}/rootfs_overlay/etc/network/wpa_supplicant.conf ] && install -m 0600 \${S}/rootfs_overlay/etc/network/wpa_supplicant.conf \${D}\${sysconfdir}/
+    [ -f \${S}/rootfs_overlay/etc/mosquitto/mosquitto.conf ] && install -m 0644 \${S}/rootfs_overlay/etc/mosquitto/mosquitto.conf \${D}\${sysconfdir}/mosquitto/
     [ -f \${S}/rootfs_overlay/etc/init.d/S99wifi ] && install -m 0755 \${S}/rootfs_overlay/etc/init.d/S99wifi \${D}\${sysconfdir}/init.d/
 }
 
@@ -74,13 +89,26 @@ FILES:\${PN} = "\${bindir}/* \${sysconfdir}/* /lib/firmware/*"
 INSANE_SKIP:\${PN} = "installed-vs-shipped"
 EOT
 
-# 6. Overlay kopieren
-OVERLAY_SRC="../external/board/cm5io/rootfs_overlay"
-[ -d "$OVERLAY_SRC" ] && cp -r $OVERLAY_SRC/* meta-custom/recipes-core/custom-scripts/files/rootfs_overlay/
+# 7. Firmware Downloads vorab ausführen (Host-Side)
+RPI_WIFI="https://raw.githubusercontent.com/RPi-Distro/firmware-nonfree/master/brcm"
+RPI_BT="https://raw.githubusercontent.com/RPi-Distro/bluez-firmware/master/broadcom"
 
-cd build
+echo "Lade Firmware-Dateien herunter..."
+wget -q -O "$DL_DIR/brcmfmac43455-sdio.bin" "$RPI_WIFI/brcmfmac43455-sdio.bin"
+wget -q -O "$DL_DIR/brcmfmac43455-sdio.clm_blob" "$RPI_WIFI/brcmfmac43455-sdio.clm_blob"
+wget -q -O "$DL_DIR/brcmfmac43455-sdio.txt" "$RPI_WIFI/brcmfmac43455-sdio.txt"
+wget -q -O "$DL_DIR/BCM4345C0.hcd" "$RPI_BT/BCM4345C0.hcd"
+wget -q -O "$DL_DIR/isrgrootx1.pem" "https://letsencrypt.org/certs/isrgrootx1.pem.txt"
 
-# 7. Layer hinzufügen & local.conf schreiben
+# 8. Lokale Dateien (bin/ und etc/) in den Overlay-Ordner kopieren
+echo "Kopiere lokale Scripte und Konfigurationen..."
+[ -d "$PROJECT_ROOT/bin" ] && cp -r "$PROJECT_ROOT/bin" "$OVERLAY_DIR/"
+[ -d "$PROJECT_ROOT/etc" ] && cp -r "$PROJECT_ROOT/etc" "$OVERLAY_DIR/"
+
+# 9. Zurück in den Build-Ordner
+cd "$PROJECT_ROOT/build"
+
+# 10. Layer hinzufügen
 bitbake-layers add-layer ../meta-raspberrypi
 bitbake-layers add-layer ../meta-openembedded/meta-oe
 bitbake-layers add-layer ../meta-openembedded/meta-python
@@ -88,23 +116,36 @@ bitbake-layers add-layer ../meta-openembedded/meta-networking
 bitbake-layers add-layer ../meta-openembedded/meta-multimedia
 bitbake-layers add-layer ../meta-custom
 
-LOCAL_CONF="conf/local.conf"
-rm -f $LOCAL_CONF
-cat <<EOT >> $LOCAL_CONF
+# 11. local.conf schreiben
+cat <<EOT > conf/local.conf
 MACHINE = "raspberrypi5"
 ENABLE_UART = "1"
 VC4GRAPHICS = "1"
 IMAGE_FSTYPES = "wic.bz2 wic.bmap"
 LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
-IMAGE_INSTALL:append = " wpa-supplicant iw wget ca-certificates python3-core python3-modules python3-paho-mqtt python3-requests mosquitto mosquitto-clients custom-scripts"
 
-# RESSOURCEN-SCHUTZ
+IMAGE_INSTALL:append = " \\
+    wpa-supplicant \\
+    iw \\
+    wget \\
+    ca-certificates \\
+    python3-core \\
+    python3-modules \\
+    python3-paho-mqtt \\
+    python3-requests \\
+    mosquitto \\
+    mosquitto-clients \\
+    custom-scripts \\
+"
+
+# Ressourcen-Management (anpassen falls nötig)
 BB_NUMBER_THREADS = "2"
 PARALLEL_MAKE = "-j 2"
-BB_NO_NETWORK = "0"
 INHERIT += "rm_work"
 EOT
 
-# 8. Neustart des gesamten Builds
-echo "Starte frischen Build..."
+# 12. Build starten
+# Wir clearen das Rezept einmal, um sicherzugehen, dass die neuen RREPLACES Regeln greifen
+bitbake -c cleanall custom-scripts
+echo "Starte core-image-base Build..."
 bitbake core-image-base

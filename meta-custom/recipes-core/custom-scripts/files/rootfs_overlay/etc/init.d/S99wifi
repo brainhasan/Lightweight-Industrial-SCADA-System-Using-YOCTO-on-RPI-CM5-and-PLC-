@@ -1,0 +1,13 @@
+#!/bin/sh
+# Warten, bis der Treiber sicher da ist
+sleep 5
+
+echo "Starte WLAN Verbindung..."
+# 1. WPA Supplicant starten (Verbindung aufbauen)
+wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant.conf
+
+# Kurz warten auf Verbindung
+sleep 3
+
+# 2. IP-Adresse holen (DHCP)
+udhcpc -i wlan0
