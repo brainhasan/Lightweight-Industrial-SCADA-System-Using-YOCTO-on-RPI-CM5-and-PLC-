@@ -1,4 +1,5 @@
 name: Yocto Build RPI CM5
+
 on:
   push:
     branches: [ "main" ]
@@ -7,13 +8,14 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    timeout-minutes: 360   # مهم جدًا ليوكتو
+
     steps:
       - name: Checkout Source
         uses: actions/checkout@v4
         with:
-          submodules: 'recursive'
+          submodules: recursive
 
-      # IMPORTANT: This frees up ~30GB of space by removing pre-installed tools
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
         with:
@@ -24,7 +26,7 @@ jobs:
           large-packages: true
           swap-storage: true
 
-      - name: Install System Dependencies
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y gawk wget git diffstat unzip texinfo gcc build-essential \
@@ -32,22 +34,23 @@ jobs:
           iputils-ping python3-git python3-jinja2 libegl1-mesa libsdl1.2-dev \
           pylint xterm python3-subunit mesa-common-dev zstd liblz4-tool
 
-      # Cache the SSTATE directory to speed up future runs and bypass timeouts
-      - name: Setup Cache
+      # 🔥 Cache حقيقي ذكي
+      - name: Cache Yocto sstate + downloads
         uses: actions/cache@v4
         with:
-          path: build/sstate-cache
-          key: yocto-sstate-${{ github.sha }}
+          path: |
+            build/sstate-cache
+            build/downloads
+          key: yocto-${{ runner.os }}-${{ hashFiles('**/*.bb', '**/*.bbappend', '**/conf/*.conf') }}
           restore-keys: |
-            yocto-sstate-
+            yocto-${{ runner.os }}-
 
       - name: Run Setup and Build
         run: |
           chmod +x setup_build.sh
-          # Use a subshell to ensure the environment is sourced correctly
           /bin/bash -c "source setup_build.sh"
 
-      - name: Archive Artifacts
+      - name: Upload Image
         if: success()
         uses: actions/upload-artifact@v4
         with:
